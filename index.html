@@ -140,7 +140,6 @@
 
       <form id="st5Form" onsubmit="handleAssessmentSubmit(event)" class="space-y-6">
         
-        <!-- Question Item Template -->
         <div class="p-4 sm:p-5 bg-white/70 rounded-2xl border border-pink-100/80 shadow-sm space-y-3">
           <p class="font-medium text-slate-800 text-sm sm:text-base">1. มีปัญหาการนอน นอนไม่หลับหรือนอนมากเกินไป</p>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -351,7 +350,6 @@
   <!-- Modal: History Modal -->
   <div id="historyModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
     <div class="glass-card bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-pink-100 flex flex-col max-h-[85vh]">
-      <!-- Modal Header -->
       <div class="p-5 border-b border-pink-100 flex justify-between items-center bg-pink-50/50">
         <div>
           <h3 class="font-bold text-slate-800 text-base">📜 ประวัติการประเมินย้อนหลัง</h3>
@@ -361,11 +359,9 @@
           ✕
         </button>
       </div>
-      <!-- Modal Body -->
       <div id="historyContainer" class="p-5 overflow-y-auto space-y-3 flex-grow">
         <div class="text-center py-8 text-slate-400 text-sm">ยังไม่มีประวัติการประเมินย้อนหลัง</div>
       </div>
-      <!-- Modal Footer -->
       <div class="p-4 border-t border-slate-100 text-right bg-slate-50/50">
         <button onclick="closeHistoryModal()" class="px-5 py-2 bg-pink-500 hover:bg-pink-600 text-white font-medium text-xs rounded-xl transition-all shadow-sm">
           ปิดหน้าต่าง
@@ -375,7 +371,30 @@
   </div>
 
   <script>
+    // ----------------------------------------------------
+    // ใส่ URL ของ Google Apps Script Web App ที่ Deploy แล้วที่นี่
+    // ----------------------------------------------------
+    const SCRIPT_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec";
+
     let currentUser = null;
+
+    // Helper function สำหรับยิง API สื่อสารกับ Google Sheets
+    async function apiCall(action, payload = {}) {
+      if (!SCRIPT_URL || SCRIPT_URL.includes("YOUR_DEPLOYMENT_ID")) {
+        throw new Error("กรุณากำหนด SCRIPT_URL ในไฟล์ index.html ให้ถูกต้องก่อนใช้งาน");
+      }
+
+      const response = await fetch(SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: action, data: payload })
+      });
+
+      if (!response.ok) {
+        throw new Error("ไม่สามารถติดต่อเซิร์ฟเวอร์ได้ (HTTP " + response.status + ")");
+      }
+      return await response.json();
+    }
 
     function switchAuthTab(tab) {
       const loginForm = document.getElementById('loginForm');
@@ -393,6 +412,138 @@
         registerForm.classList.remove('hidden');
         tabRegisterBtn.className = "flex-1 py-2 text-sm font-semibold rounded-xl transition-all bg-white text-pink-600 shadow-sm";
         tabLoginBtn.className = "flex-1 py-2 text-sm font-semibold rounded-xl transition-all text-slate-500 hover:text-pink-600";
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const stId = document.getElementById('regStId').value.trim();
+      const name = document.getElementById('regName').value.trim();
+      const lname = document.getElementById('regLname').value.trim();
+      const dob = document.getElementById('regDob').value.trim();
+
+      if (stId.length !== 10 || isNaN(stId)) {
+        Swal.fire({ icon: 'warning', title: 'แจ้งเตือน', text: 'กรุณากรอกรหัสนักศึกษาเป็นตัวเลข 10 หลัก', confirmButtonColor: '#ec4899' });
+        return;
+      }
+
+      const btn = document.getElementById('regSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = `<span>กำลังบันทึกข้อมูล...</span>`;
+
+      try {
+        const res = await apiCall("registerUser", { st_id: stId, name: name, lname: lname, dob: dob });
+        btn.disabled = false;
+        btn.innerHTML = `<span>ลงทะเบียน</span>`;
+
+        if (res.success) {
+          Swal.fire({ icon: 'success', title: 'สำเร็จ', text: res.message, confirmButtonColor: '#ec4899' });
+          currentUser = res.user;
+          onLoginSuccess();
+        } else {
+          Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: res.message, confirmButtonColor: '#ec4899' });
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>ลงทะเบียน</span>`;
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ec4899' });
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const stId = document.getElementById('loginStId').value.trim();
+      const dob = document.getElementById('loginDob').value.trim();
+
+      const btn = document.getElementById('loginSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = `<span>กำลังตรวจสอบข้อมูล...</span>`;
+
+      try {
+        const res = await apiCall("loginUser", { st_id: stId, dob: dob });
+        btn.disabled = false;
+        btn.innerHTML = `<span>เข้าสู่ระบบ</span>`;
+
+        if (res.success) {
+          currentUser = res.user;
+          onLoginSuccess();
+        } else {
+          Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบไม่สำเร็จ', text: res.message, confirmButtonColor: '#ec4899' });
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>เข้าสู่ระบบ</span>`;
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ec4899' });
+      }
+    }
+
+    function onLoginSuccess() {
+      document.getElementById('authView').classList.add('hidden');
+      document.getElementById('assessmentView').classList.remove('hidden');
+      document.getElementById('userInfoHeader').classList.remove('hidden');
+
+      document.getElementById('headerUserName').innerText = `${currentUser.name} ${currentUser.lname}`;
+      document.getElementById('headerUserStId').innerText = `ID: ${currentUser.st_id}`;
+    }
+
+    async function handleAssessmentSubmit(e) {
+      e.preventDefault();
+      if (!currentUser) return;
+
+      const formData = new FormData(e.target);
+      const payload = {
+        st_id: String(currentUser.st_id),
+        q1: formData.get('q1'),
+        q2: formData.get('q2'),
+        q3: formData.get('q3'),
+        q4: formData.get('q4'),
+        q5: formData.get('q5')
+      };
+
+      const btn = document.getElementById('st5SubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = `<span>กำลังประมวลผลคำนวณคะแนน...</span>`;
+
+      try {
+        const res = await apiCall("saveAssessment", payload);
+        btn.disabled = false;
+        btn.innerHTML = `<span>ส่งแบบประเมินและดูผลลัพธ์</span>`;
+
+        if (res.success) {
+          renderResult(res.data);
+        } else {
+          Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: res.message, confirmButtonColor: '#ec4899' });
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>ส่งแบบประเมินและดูผลลัพธ์</span>`;
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ec4899' });
+      }
+    }
+
+    async function showHistoryModal() {
+      if (!currentUser || !currentUser.st_id) {
+        Swal.fire({ icon: 'warning', title: 'แจ้งเตือน', text: 'กรุณาเข้าสู่ระบบก่อนดูประวัติย้อนหลัง', confirmButtonColor: '#ec4899' });
+        return;
+      }
+      
+      const modal = document.getElementById('historyModal');
+      const subtitle = document.getElementById('historyModalSubtitle');
+      const container = document.getElementById('historyContainer');
+
+      subtitle.innerText = `ผู้ประเมิน: คุณ${currentUser.name} ${currentUser.lname} (รหัส: ${currentUser.st_id})`;
+      modal.classList.remove('hidden');
+      container.innerHTML = `<div class="text-center py-8 text-pink-500 font-medium animate-pulse text-sm">กำลังโหลดประวัติของคุณ...</div>`;
+
+      try {
+        const res = await apiCall("getUserHistory", { st_id: currentUser.st_id });
+        if (res && res.success) {
+          renderHistoryList(res.history);
+        } else {
+          container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${res.message || 'ไม่พบประวัติการประเมิน'}</div>`;
+        }
+      } catch (err) {
+        container.innerHTML = `<div class="text-center py-8 text-rose-500 text-sm">เกิดข้อผิดพลาดในการดึงข้อมูล: ${err.message}</div>`;
       }
     }
 
@@ -417,191 +568,6 @@
       } else {
         container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">ไม่พบประวัติการประเมินของคุณในระบบ</div>`;
       }
-    }
-
-    function showHistoryModal() {
-      if (!currentUser || !currentUser.st_id) {
-        Swal.fire({ icon: 'warning', title: 'แจ้งเตือน', text: 'กรุณาเข้าสู่ระบบก่อนดูประวัติย้อนหลัง', confirmButtonColor: '#ec4899' });
-        return;
-      }
-      
-      const modal = document.getElementById('historyModal');
-      const subtitle = document.getElementById('historyModalSubtitle');
-      const container = document.getElementById('historyContainer');
-
-      // แสดงชื่อและรหัสนักศึกษาเฉพาะคนที่ Login
-      subtitle.innerText = `ผู้ประเมิน: คุณ${currentUser.name} ${currentUser.lname} (รหัส: ${currentUser.st_id})`;
-      modal.classList.remove('hidden');
-      container.innerHTML = `<div class="text-center py-8 text-pink-500 font-medium animate-pulse text-sm">กำลังโหลดประวัติของคุณ...</div>`;
-
-      // ตรวจสอบ Google Script Environment
-      if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        setTimeout(() => {
-          container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">โหมดพรีวิว: ยังไม่มีข้อมูลย้อนหลัง</div>`;
-        }, 300);
-        return;
-      }
-
-      // ดึงข้อมูลประวัติเฉพาะ st_id ของ currentUser
-      google.script.run
-        .withSuccessHandler((res) => {
-          if (res && res.success) {
-            renderHistoryList(res.history);
-          } else {
-            container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${res.message || 'ไม่พบประวัติการประเมิน'}</div>`;
-          }
-        })
-        .withFailureHandler((err) => {
-          container.innerHTML = `<div class="text-center py-8 text-rose-500 text-sm">เกิดข้อผิดพลาดในการดึงข้อมูล: ${err ? (err.message || err) : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'}</div>`;
-        })
-        .getUserHistory(String(currentUser.st_id));
-    }
-
-    function closeHistoryModal() {
-      document.getElementById('historyModal').classList.add('hidden');
-    }
-
-    function handleRegister(e) {
-      e.preventDefault();
-      const stId = document.getElementById('regStId').value.trim();
-      const name = document.getElementById('regName').value.trim();
-      const lname = document.getElementById('regLname').value.trim();
-      const dob = document.getElementById('regDob').value.trim();
-
-      if (stId.length !== 10 || isNaN(stId)) {
-        Swal.fire({ icon: 'warning', title: 'แจ้งเตือน', text: 'กรุณากรอกรหัสนักศึกษาเป็นตัวเลข 10 หลัก', confirmButtonColor: '#ec4899' });
-        return;
-      }
-
-      const btn = document.getElementById('regSubmitBtn');
-      btn.disabled = true;
-      btn.innerHTML = `<span>กำลังบันทึกข้อมูล...</span>`;
-
-      if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        btn.disabled = false;
-        btn.innerHTML = `<span>ลงทะเบียน</span>`;
-        currentUser = { st_id: stId, name: name, lname: lname, dob: dob };
-        onLoginSuccess();
-        return;
-      }
-
-      google.script.run
-        .withSuccessHandler((res) => {
-          btn.disabled = false;
-          btn.innerHTML = `<span>ลงทะเบียน</span>`;
-          if (res.success) {
-            Swal.fire({ icon: 'success', title: 'สำเร็จ', text: res.message, confirmButtonColor: '#ec4899' });
-            currentUser = res.user;
-            onLoginSuccess();
-          } else {
-            Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: res.message, confirmButtonColor: '#ec4899' });
-          }
-        })
-        .withFailureHandler((err) => {
-          btn.disabled = false;
-          btn.innerHTML = `<span>ลงทะเบียน</span>`;
-          Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ec4899' });
-        })
-        .registerUser({ st_id: stId, name: name, lname: lname, dob: dob });
-    }
-
-    function handleLogin(e) {
-      e.preventDefault();
-      const stId = document.getElementById('loginStId').value.trim();
-      const dob = document.getElementById('loginDob').value.trim();
-
-      const btn = document.getElementById('loginSubmitBtn');
-      btn.disabled = true;
-      btn.innerHTML = `<span>กำลังตรวจสอบข้อมูล...</span>`;
-
-      if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        btn.disabled = false;
-        btn.innerHTML = `<span>เข้าสู่ระบบ</span>`;
-        currentUser = { st_id: stId, name: "นักศึกษา", lname: "ทดสอบ", dob: dob };
-        onLoginSuccess();
-        return;
-      }
-
-      google.script.run
-        .withSuccessHandler((res) => {
-          btn.disabled = false;
-          btn.innerHTML = `<span>เข้าสู่ระบบ</span>`;
-          if (res.success) {
-            currentUser = res.user;
-            onLoginSuccess();
-          } else {
-            Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบไม่สำเร็จ', text: res.message, confirmButtonColor: '#ec4899' });
-          }
-        })
-        .withFailureHandler((err) => {
-          btn.disabled = false;
-          btn.innerHTML = `<span>เข้าสู่ระบบ</span>`;
-          Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ec4899' });
-        })
-        .loginUser(stId, dob);
-    }
-
-    function onLoginSuccess() {
-      document.getElementById('authView').classList.add('hidden');
-      document.getElementById('assessmentView').classList.remove('hidden');
-      document.getElementById('userInfoHeader').classList.remove('hidden');
-
-      document.getElementById('headerUserName').innerText = `${currentUser.name} ${currentUser.lname}`;
-      document.getElementById('headerUserStId').innerText = `ID: ${currentUser.st_id}`;
-    }
-
-    function handleAssessmentSubmit(e) {
-      e.preventDefault();
-      if (!currentUser) return;
-
-      const formData = new FormData(e.target);
-      const payload = {
-        st_id: String(currentUser.st_id),
-        q1: formData.get('q1'),
-        q2: formData.get('q2'),
-        q3: formData.get('q3'),
-        q4: formData.get('q4'),
-        q5: formData.get('q5')
-      };
-
-      const btn = document.getElementById('st5SubmitBtn');
-      btn.disabled = true;
-      btn.innerHTML = `<span>กำลังประมวลผลคำนวณคะแนน...</span>`;
-
-      if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        btn.disabled = false;
-        btn.innerHTML = `<span>ส่งแบบประเมินและดูผลลัพธ์</span>`;
-        const q1 = parseInt(payload.q1) || 0;
-        const q2 = parseInt(payload.q2) || 0;
-        const q3 = parseInt(payload.q3) || 0;
-        const q4 = parseInt(payload.q4) || 0;
-        const q5 = parseInt(payload.q5) || 0;
-        const total = q1 + q2 + q3 + q4 + q5;
-        let resText = "ความเครียดระดับน้อย", emoji = "😊";
-        if (total >= 10) { resText = "ความเครียดระดับรุนแรง"; emoji = "😫"; }
-        else if (total >= 8) { resText = "ความเครียดระดับมาก"; emoji = "😟"; }
-        else if (total >= 5) { resText = "ความเครียดระดับปานกลาง"; emoji = "😐"; }
-        
-        renderResult({ q1, q2, q3, q4, q5, total, result: resText, emoji });
-        return;
-      }
-
-      google.script.run
-        .withSuccessHandler((res) => {
-          btn.disabled = false;
-          btn.innerHTML = `<span>ส่งแบบประเมินและดูผลลัพธ์</span>`;
-          if (res.success) {
-            renderResult(res.data);
-          } else {
-            Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: res.message, confirmButtonColor: '#ec4899' });
-          }
-        })
-        .withFailureHandler((err) => {
-          btn.disabled = false;
-          btn.innerHTML = `<span>ส่งแบบประเมินและดูผลลัพธ์</span>`;
-          Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ec4899' });
-        })
-        .saveAssessment(payload);
     }
 
     function renderResult(data) {
@@ -634,6 +600,10 @@
         banner.className = "p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800";
         advice.innerText = "มีความเครียดระดับรุนแรง แนะนำให้พบผู้เชี่ยวชาญ/นักจิตวิทยา เพื่อรับคำแนะนำที่เหมาะสม";
       }
+    }
+
+    function closeHistoryModal() {
+      document.getElementById('historyModal').classList.add('hidden');
     }
 
     function reCalculate() {
